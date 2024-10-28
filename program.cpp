@@ -56,8 +56,11 @@ template<typename T> void encode_bin(vector<T> data, string filePath) {
 
 /**
  * Decoding - Binary(bin)
+ * 
+ * Added enable condition to escape compile issues for string data in template conditions (SFINAE).
  */
-template<typename T> void decode_bin(string filePath) {
+template<typename T, typename enable_if<is_arithmetic<T>::value,int>::type=0>
+void decode_bin(string filePath) {
     ifstream fin(filePath + ".bin", ios::in | ios::binary);
     if (!fin) {
         cerr << "Error opening file for reading: " << filePath << ".bin" << endl;
@@ -65,8 +68,16 @@ template<typename T> void decode_bin(string filePath) {
     }
 
     T item;
-    while (fin.read(reinterpret_cast<char*>(&item), sizeof(T))) {
-        cout << item << endl;
+
+    // Issues during decoding int8_t values due to collision with character encoding into ASCII.
+    if (is_same<T,int8_t>::value) {
+        while (fin.read(reinterpret_cast<char*>(&item), sizeof(T))) {
+            cout << (int)item << '\n';
+        }
+    } else {
+        while (fin.read(reinterpret_cast<char*>(&item), sizeof(T))) {
+            cout << item << '\n';
+        }       
     }
 
     fin.close();
@@ -83,9 +94,16 @@ template<typename T> void performEncoding(vector<T> data, input_params params) {
     }
 }
 
-template<typename T> void performDecoding(input_params params) {
-    if(params.technique = "bin") {
-        decode_bin<T>(params.file_path);
+void performDecoding(input_params params) {
+    if(params.technique == "bin" && params.data_type != "string") {
+        if(params.data_type == "int8")
+            decode_bin<int8_t>(params.file_path);
+        else if(params.data_type == "int16")
+            decode_bin<int16_t>(params.file_path);
+        else if(params.data_type == "int32")
+            decode_bin<int32_t>(params.file_path);
+        else if(params.data_type == "int64")
+            decode_bin<int64_t>(params.file_path);
     }
 }
 
@@ -143,11 +161,9 @@ int main(int argc, char* argv[]) {
         } else if(params.data_type == "string") {
             performEncoding<string>(data, params);
         }
-    } else if (params.action == "de") {
-        if(params.data_type == "int8")
-            performDecoding<int8_t>(params);
-    }
-    
+    } else if (params.action == "de")
+        performDecoding(params);
+
     return 0;
 }
 

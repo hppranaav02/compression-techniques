@@ -4,6 +4,12 @@
 
 using namespace std;
 
+#define CHECK_EN_FILE_OPEN(file, filePath,technique) \
+    if (!file) { \
+        cerr << "Error opening file for writing: " << filePath << "." << technique << endl; \
+        return; \
+    }
+
 // Structure for command line arguments
 struct input_params {
     string action;
@@ -87,11 +93,100 @@ void decode_bin(string filePath) {
     }
 }
 
+/**
+ * Encoding - Frame of Reference
+ */
+template<typename T> void encode_for(vector<T> data, string filePath) {
+    ofstream fout(filePath + "for",ios::out, ios::binary);
+    if (!fout) {
+        cerr << "Error opening file for writing: " << filePath << ".bin" << endl;
+        return;
+    }
+
+}
+
+template <typename T>
+typename enable_if<is_integral<T>::value, vector<uint8_t>>::type
+encodeFoRCompressed(const vector<T>& data, T& reference) {
+    static_assert(sizeof(T) <= 8, "Type size must be 8 bytes or less."); // Ensure types are 8 bytes or smaller
+    ofstream fout(filePath + ".for",ios::ou, ios::binary);
+    if (!fout) {
+        cerr << "Error opening file for writing: " << filePath << ".for" << endl;
+        return;
+    }
+
+    if constexpr (is_same<T, int8_t>::value) {
+    for (size_t i = 0; i < data.size(); i += 2) {
+        uint8_t firstOffset = static_cast<uint8_t>(data[i] - reference);
+        uint8_t secondOffset = (i + 1 < data.size()) ? static_cast<uint8_t>(data[i + 1] - reference) : 0;
+
+        // Pack two 4-bit offsets into a single byte
+        compressedData.push_back((firstOffset & 0x0F) | ((secondOffset & 0x0F) << 4));
+    }
+    } else {
+        vector<uint8_t> diffs;
+        vector<T> refs;
+
+        for(size_t i = 0; i < data.size(); i+=10) {
+            vector<T> block = reserve(10);
+            //Get a block of 10 elements
+            for(size_t j = i; j < 10; j++)
+                block.push_back(data.at(j));
+                // in case last block is less than 10
+                if(&data.at(j) == data.end())
+                    break;
+
+            // Find and push the reference
+            T ref = *min_element(block.begin(), block.end());
+            ref.push_back(ref);
+
+            // Calculate the difference and push to vector
+            for(size_t i = 0; i < 10; i++) {
+                if(block.at(i) == ref) {
+                    uint8_t of = 0x00
+                    diffs.push_back(of);
+                } else {
+                    T diff = block.at(i) - ref;
+                    while(diff & 0xff != 0) {
+                        // Get last 7 bits
+                        uint8_t offset = diff & 0x7f;
+                        // Remove those bits
+                        diff >> 7; 
+                        // Set continuation bit and add to vector
+                        if(diff & 0x7f != 0)
+                            offset |= 0x80;
+                        diffs.push_back(offset);
+                    }
+                }
+                // In case block is less than 10
+                if(&block.at(i) == block.end())
+                    break;
+            }
+            
+
+            block.clear();
+        }
+        for(size_t i = 0; i < refs.size();i++) {
+            fout.write(reinterpret_cast<const char*>(&refs.at(i)), sizeof(T));
+            for(size_t j = i;j < i+10; j++) {
+                fout.write(reinterpret_cast<const char*>(&diffs.at(j)), sizeof(uint8_t));
+            }
+        }
+    }
+    fout.close();
+    if (!fout.good()) {
+        cerr << "Error occurred at writing time!" << endl;
+    }
+
+    return compressedData;
+}
+
 
 template<typename T> void performEncoding(vector<T> data, input_params params) {
-    if(params.technique == "bin") {
+    if(params.technique == "bin")
         encode_bin<T>(data, params.file_path);
-    }
+    else if(params.technique == "for")
+        encode_for<T>(data, params.file_path)
 }
 
 void performDecoding(input_params params) {
